@@ -1,0 +1,49 @@
+name: LSTM_Season2_MSE_W_allfields_RNN_5l_SM_03w_10e
+version: 0.0.1
+
+delta_mode: 0
+
+architecture: 
+  type: ["RNN", "LSTM"]
+  hidden: [5,7,10]
+
+hyperparameters:
+  batch_size: 32
+  learning_rate: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  optimizer: "Adam"
+  loss: "MSE_W"
+  loss_MSE_W_decay: 0.3
+  epoches: [5,10]
+
+window:
+  past: int
+  forecast: int
+
+folds: [[1, 8, 17], [6, 9, 14], [4, 11, 13], [3, 12, 16], [5, 7, 15], [2, 10, 18]]
+
+files_path: './data/datasets/season1'
+
+features:
+  input:
+    fiedls: ['s_b','s_w','LAI','irr']
+    meteo_historical: ['temperature_2m', 'rain']
+    meteo_forecast: ['temperature_2m_f','rain_f']
+  output: ['s_w']
+  input_seq_len: 72
+  output_seq_len: 48
+  shift: 0
+  geo_coordinate:
+    lat: 52.52
+    lon: 13.41
+
+irr_param:
+  durartio: 
+    a: -4.99
+    b: 137.97
+  volume:
+    a: -3.16
+    b: 87.22
+  threshold: 22.0
+

@@ -48,9 +48,13 @@ def set_randomness():
     torch.backends.cudnn.benchmark = False
 
 
-def load_train_test(train_path, test_path):
-    df_train = pd.read_csv(train_path)
-    df_test = pd.read_csv(test_path)
+def load_train_test(train_fields, test_fields):
+    df_train = []
+    df_test = []
+    for field_id in train_fields:
+        df_train.append(pd.read_csv(f"field_f{field_id}.csv"))
+    for field_id in test_fields:
+        df_test.append(pd.read_csv(f"field_f{field_id}.csv"))
     return df_train, df_test
 
 
@@ -112,110 +116,54 @@ class TimeSeriesDataset(Dataset):
         ]
 
         return x, x_f, y
-    
-class TimeSeriesDataset_Delta(Dataset):
-    def __init__(self, config, data):
-        """
-        Args:
-            data (pandas.Dataframe)
-        """
-        # if isinstance(data, np.ndarray):
-        #    data = torch.tensor(data, dtype=torch.float32)
-
-        self.data = data
-        self.input_seq_len = config["features"]["input_seq_len"]
-        self.output_seq_len = config["features"]["output_seq_len"]
-        self.input_features_list = (
-            config["features"]["input"]["fiedls"]
-            + config["features"]["input"]["meteo_historical"]
-        )
-        self.input_forecast_features_list = config["features"]["input"][
-            "meteo_forecast"
-        ]
-        self.out_features_list = config["features"]["output"]
-        self.shift = config["features"]["shift"]
-        self.length = (
-            len(self.data) - self.input_seq_len - self.output_seq_len + 1 - self.shift
-        )
-
-    def __len__(self):
-        return self.length
-
-    def __getitem__(self, idx):
-        x = self.data[self.input_features_list]
-        x = torch.tensor(x.values, dtype=torch.float32)
-        x = x[idx : idx + self.input_seq_len, :]
-
-        x_f = self.data[self.input_forecast_features_list]
-        x_f = torch.tensor(x_f.values, dtype=torch.float32)
-        x_f = x_f[
-            idx
-            + self.input_seq_len
-            + self.shift : idx
-            + self.input_seq_len
-            + self.output_seq_len
-            + self.shift,
-            :,
-        ]
-
-        y = self.data[self.out_features_list]
-        y = torch.tensor(y.values, dtype=torch.float32)
-        y = y[
-            idx
-            + self.input_seq_len
-            + self.shift : idx
-            + self.input_seq_len
-            + self.output_seq_len
-            + self.shift,
-            :,
-        ]
-
-        y=y-x[-1,0:1]
-
-        return x, x_f, y
-
 
 
 def scale_data(df_train, df_test):
 
     scaler = StandardScaler()
-    scaler.fit(df_train)
+    df_train_concat = pd.concat(df_train, ignore_index=True)
+    scaler.fit(df_train_concat)
 
-    df_train_np = scaler.transform(df_train)
-    df_test_np = scaler.transform(df_test)
-
-    df_train = pd.DataFrame(df_train_np, columns=df_train.columns, index=df_train.index)
-    df_test = pd.DataFrame(df_test_np, columns=df_test.columns, index=df_test.index)
+    for i in range(len(df_train)):
+        df_train_np = scaler.transform(df_train[i])
+        df_train[i] = pd.DataFrame(
+            df_train_np, columns=df_train[i].columns, index=df_train[i].index
+        )
+    for i in range(len(df_test)):    
+        df_test_np = scaler.transform(df_test[i])
+        df_test[i] = pd.DataFrame(
+            df_test_np, columns=df_test[i].columns, index=df_test[i].index
+        )
 
     return df_train, df_test, scaler
 
 
 def set_data_loaders(config, df_train, df_test):
 
-    if config['delta_mode']==0:
-        dataset_train = TimeSeriesDataset(config, df_train)
-    if config['delta_mode']==1:
-        dataset_train = TimeSeriesDataset_Delta(config, df_train)
-    dataloader_train = DataLoader(dataset_train, batch_size=32, shuffle=True)
+    dataloader_train = []
+    dataloader_test = []
+    for i in range(len(df_train)):
+        dataset_train = TimeSeriesDataset(config, df_train[i])
+        dataloader_train.append(DataLoader(dataset_train, batch_size=32, shuffle=True))
 
-    if config['delta_mode']==0:
-        dataset_test = TimeSeriesDataset(config, df_test)
-    if config['delta_mode']==1:
-        dataset_test = TimeSeriesDataset_Delta(config, df_test)
-    dataloader_test = DataLoader(dataset_test, batch_size=32, shuffle=True)
+    for i in range(len(df_test)):
+        dataset_test = TimeSeriesDataset(config, df_test[i])
+        dataloader_test.append(DataLoader(dataset_test, batch_size=32, shuffle=True))
 
     return dataloader_train, dataloader_test
 
 
-def create_sub_df(df, selected_columns):
-    if all(item in df.columns for item in selected_columns):
-        return df[selected_columns]
-    else:
-        raise Exception(
-            f"""Not all items are contained in train columns \n
-            Train Columns: {df.columns} \n
-            Selected_columns: {selected_columns}""",
-        )
+def create_sub_df(dfs, selected_columns):
+    reduced_dfs = []
+    for current_df in dfs:
+        if all(item in current_df.columns for item in selected_columns):
+            reduced_dfs.append(current_df[selected_columns])
+        else:
+            raise Exception(
+                f"""Not all items are contained in train columns \n
+                Train Columns: {current_df.columns} \n
+                Selected_columns: {selected_columns}""",
+            )
 
 
 def data_preparation(config):
@@ -249,18 +197,18 @@ def data_preparation(config):
     df_test = create_sub_df(df_test, selected_columns)
 
     df_train, df_test, scaler = scale_data(df_train, df_test)
-    dataloader_train, dataloader_test = set_data_loaders(config, df_train, df_test)
+    dataloaders_train, dataloaders_test = set_data_loaders(config, df_train, df_test)
 
-    return dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index
+    return dataloaders_train, dataloaders_test, scaler, output_scale_index, x_scale_index, x_f_scale_index
 
 
-def train(config, dataloader_train, dataloader_test, output_scale_index, scaler):
+def train(config, num_of_epoches, dataloaders_train, dataloaders_test, output_scale_index, scaler):
 
     model = create_model(config)
 
     optimizer = load_Optimizer(model, config)
     criterion = load_Loss(config)
-    epochs = config["hyperparameters"]["epoches"]
+    epochs = num_of_epoches
 
     train_losses = np.zeros(epochs)
     test_losses = np.zeros(epochs)
@@ -270,31 +218,8 @@ def train(config, dataloader_train, dataloader_test, output_scale_index, scaler)
         model.train()
         train_loss = 0.0
         count = 0
-        for x_batch, x_f_batch, y_batch in dataloader_train:
-            count += 1
-            x_batch = x_batch.type(torch.float32)
-            x_f_batch = x_f_batch.type(torch.float32)
-            y_batch = y_batch.type(torch.float32)
-            # Forward pass
-            outputs = model(x_batch, x_f_batch)
-
-            loss = criterion(outputs, y_batch)
-            train_loss += loss.item()
-
-            # Backpropagation
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        train_losses[epoch] = train_loss / count
-
-        model.eval()
-        with torch.inference_mode():
-            # 1. Forward pass
-            test_loss = 0.0
-            mse_s = 0.0
-            count = 0
-            for x_batch, x_f_batch, y_batch in dataloader_test:
+        for dataloader_train in dataloaders_train:
+            for x_batch, x_f_batch, y_batch in dataloader_train:
                 count += 1
                 x_batch = x_batch.type(torch.float32)
                 x_f_batch = x_f_batch.type(torch.float32)
@@ -302,17 +227,42 @@ def train(config, dataloader_train, dataloader_test, output_scale_index, scaler)
                 # Forward pass
                 outputs = model(x_batch, x_f_batch)
 
-                ## apply inverse_scale_data(output, col)
-                outputs = inverse_scale_data(outputs, output_scale_index, scaler)
-                y_batch = inverse_scale_data(y_batch, output_scale_index, scaler)
-
                 loss = criterion(outputs, y_batch)
-                test_loss += loss.item()
-                mse = torch.mean((y_batch - outputs) ** 2)
-                mse_s += mse
+                train_loss += loss.item()
 
-            mse_overEpoches[epoch] = mse_s / count
-            test_losses[epoch] = test_loss / count
+                # Backpropagation
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+
+            train_losses[epoch] = train_loss / count
+
+            model.eval()
+            with torch.inference_mode():
+                # 1. Forward pass
+                test_loss = 0.0
+                mse_s = 0.0
+                count = 0
+                for dataloader_test in dataloaders_test:
+                    for x_batch, x_f_batch, y_batch in dataloader_test:
+                        count += 1
+                        x_batch = x_batch.type(torch.float32)
+                        x_f_batch = x_f_batch.type(torch.float32)
+                        y_batch = y_batch.type(torch.float32)
+                        # Forward pass
+                        outputs = model(x_batch, x_f_batch)
+
+                        ## apply inverse_scale_data(output, col)
+                        outputs = inverse_scale_data(outputs, output_scale_index, scaler)
+                        y_batch = inverse_scale_data(y_batch, output_scale_index, scaler)
+
+                        loss = criterion(outputs, y_batch)
+                        test_loss += loss.item()
+                        mse = torch.mean((y_batch - outputs) ** 2)
+                        mse_s += mse
+
+                    mse_overEpoches[epoch] = mse_s / count
+                    test_losses[epoch] = test_loss / count
 
     return model, test_losses, mse_overEpoches
 
@@ -367,12 +317,35 @@ if __name__ == "__main__":
     #config = get_config_file('src/configurations/config_season2_MSE_W_newfieldsV3.yaml')
     print(config)
 
-    
-    dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index = data_preparation(
-        config
-    )
-    model, loss_mse, mse_overEpoches = train(
-        config, dataloader_train, dataloader_test, output_scale_index, scaler
-    )
-    save(config, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
+    folds = config["folds"]
+    for i in range(len(folds)):
+        test_fields = folds[i]
+
+        train_fields = [
+            item
+            for j, fold in enumerate(folds)
+            if j != i
+            for item in fold
+        ]
+
+        print(f"Fold {i + 1}")
+        print("Train:", train_fields)
+        print("Test: ", test_fields)
+
+        for num_of_epoches in config["hyperparameters"]["epoches"]:
+
+            dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index = data_preparation(
+                config, train_fields, test_fields
+            )
+            model, loss_mse, mse_overEpoches = train(
+                config, num_of_epoches, dataloader_train, dataloader_test, output_scale_index, scaler
+            )
+            save(config, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
+    # dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index = data_preparation(
+    #     config
+    # )
+    # model, loss_mse, mse_overEpoches = train(
+    #     config, dataloader_train, dataloader_test, output_scale_index, scaler
+    # )
+    # save(config, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
 
