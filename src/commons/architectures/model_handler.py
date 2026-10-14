@@ -11,9 +11,9 @@ from src.commons.data import inverse_scale_data, specific_scale_data
 available_models = ["RNN", "LSTM", "LSTM_SMW"]
 
 
-def create_model(config):
+def create_model(config, architecture=None, hidden_layers=None):
 
-    model_type = config["architecture"]["type"]
+    model_type = architecture
 
     if model_type in available_models:
 
@@ -26,7 +26,7 @@ def create_model(config):
                 + config["features"]["input"]["meteo_historical"]
             )
             output_size = len(config["features"]["output"])
-            hidden_size = config["architecture"]["hidden"]
+            hidden_size = hidden_layers
             forecast_size = len(config["features"]["input"]["meteo_forecast"])
 
             output_seq_len = config["features"]["output_seq_len"]
@@ -46,7 +46,7 @@ def create_model(config):
                 + config["features"]["input"]["meteo_historical"]
             )
             output_size = len(config["features"]["output"])
-            hidden_size = config["architecture"]["hidden"]
+            hidden_size = hidden_layers
             forecast_size = len(config["features"]["input"]["meteo_forecast"])
 
             output_seq_len = config["features"]["output_seq_len"]
@@ -67,7 +67,7 @@ def create_model(config):
                 + config["features"]["input"]["meteo_historical"]
             )
             output_size = len(config["features"]["output"])
-            hidden_size = config["architecture"]["hidden"]
+            hidden_size = hidden_layers
             forecast_size = len(config["features"]["input"]["meteo_forecast"])
 
             output_seq_len = config["features"]["output_seq_len"]
