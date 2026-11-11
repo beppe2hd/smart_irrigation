@@ -230,3 +230,4 @@ test_elements/
 launch.json
 settings.json
 .cache.sqlite
+experiments/

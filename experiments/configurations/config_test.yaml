@@ -1,4 +1,4 @@
-name: LSTM_Season2_MSE_W_allfields_RNN_5l_SM_03w_10e
+name: Season2_MSE_W_tempRain
 version: 0.0.1
 
 delta_mode: 0
@@ -15,7 +15,7 @@ hyperparameters:
   optimizer: "Adam"
   loss: "MSE_W"
   loss_MSE_W_decay: 0.3
-  epoches: [5,10]
+  epoches: [5,10,15]
 
 window:
   past: int

@@ -179,7 +179,6 @@ def data_preparation(config, train_fields, test_fields):
     )
     selected_columns = list(dict.fromkeys(selected_columns))
 
-    print("------------")
     targets = config["features"]["output"]
     output_scale_index = [selected_columns.index(t) for t in targets]
     targets_fields = config["features"]["input"]["fiedls"]
@@ -191,12 +190,8 @@ def data_preparation(config, train_fields, test_fields):
     targets = config["features"]["input"]["meteo_forecast"]
     x_f_scale_index = [selected_columns.index(t) for t in targets]
 
-    print(len(df_train))
-
     df_train = create_sub_df(df_train, selected_columns)
     df_test = create_sub_df(df_test, selected_columns)
-
-    print(len(df_train))
 
     df_train, df_test, scaler = scale_data(df_train, df_test)
     dataloaders_train, dataloaders_test = set_data_loaders(config, df_train, df_test)
@@ -212,15 +207,8 @@ def train(config, architecture, hidden_layers, num_of_epoches, dataloaders_train
     import os
     import torch
 
-    print("Python:", sys.executable)
-    print("Directory:", os.getcwd())
-    print("PyTorch:", torch.__version__)
-    print("Modello:", type(model))
-    print("Numero di parametri:", sum(p.numel() for p in model.parameters()))
-
-
     optimizer = load_Optimizer(model, config)
-    criterion = load_Loss(config)
+    criterion = load_Loss(config, device="cpu")
     epochs = num_of_epoches
 
     train_losses = np.zeros(epochs)
@@ -266,8 +254,8 @@ def train(config, architecture, hidden_layers, num_of_epoches, dataloaders_train
                     outputs = model(x_batch, x_f_batch)
 
                     ## apply inverse_scale_data(output, col)
-                    outputs = inverse_scale_data(outputs, output_scale_index, scaler)
-                    y_batch = inverse_scale_data(y_batch, output_scale_index, scaler)
+                    outputs = inverse_scale_data(outputs, output_scale_index, scaler, device="cpu")
+                    y_batch = inverse_scale_data(y_batch, output_scale_index, scaler, device="cpu")
 
                     loss = criterion(outputs, y_batch)
                     test_loss += loss.item()
@@ -280,13 +268,13 @@ def train(config, architecture, hidden_layers, num_of_epoches, dataloaders_train
     return model, test_losses, mse_overEpoches
 
 
-def save(config, architecture, hidden_layers, num_of_epoches, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches):
+def save(config, architecture, hidden_layers, num_of_epoches, current_fold, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches):
 
     print(loss_mse)
     print(mse_overEpoches)
     print(output_scale_index)
 
-    folder_path = f"../experiments/outputs/{config['name']}_architecture_{architecture}_hidden_{hidden_layers}_epoches_{num_of_epoches}"
+    folder_path = f"experiments/outputs/{config['name']}_architecture_{architecture}_hidden_{hidden_layers}_epoches_{num_of_epoches}_fold_{current_fold + 1}"
     os.makedirs(folder_path, exist_ok=True)
     print(f"Folder {folder_path}")
 
@@ -344,10 +332,12 @@ if __name__ == "__main__":
                         if j != current_fold
                         for item in fold
                     ]
-
+                    print(f"------------")
+                    print(f"Num of epoches: {num_of_epoches} --- Architecture: {architecture} --- Hidden layers: {hidden_layers}")
                     print(f"Fold {current_fold + 1}")
                     print("Train:", train_fields)
                     print("Test: ", test_fields)
+                    print(f"------------")
 
                     dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index = data_preparation(
                         config, train_fields, test_fields
@@ -355,12 +345,7 @@ if __name__ == "__main__":
                     model, loss_mse, mse_overEpoches = train(
                         config, architecture, hidden_layers, num_of_epoches, dataloader_train, dataloader_test, output_scale_index, scaler
                     )
-                    #save(config, architecture, hidden_layers, num_of_epoches, current_fold, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
-    # dataloader_train, dataloader_test, scaler, output_scale_index, x_scale_index, x_f_scale_index = data_preparation(
-    #     config
-    # )
-    # model, loss_mse, mse_overEpoches = train(
-    #     config, dataloader_train, dataloader_test, output_scale_index, scaler
-    # )
-    # save(config, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
+                    print(f"Saving model for fold {current_fold + 1}...")
+                    save(config, architecture, hidden_layers, num_of_epoches, current_fold, model, scaler, output_scale_index, x_scale_index, x_f_scale_index, loss_mse, mse_overEpoches)
+
 
